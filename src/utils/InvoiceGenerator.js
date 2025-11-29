@@ -15,30 +15,40 @@ const COMPANY_INFO = {
   logoPath: path.join(process.cwd(), "assets", "logo.png"),
 };
 
+// Local font paths (NO axios, NO CDN)
+const REGULAR_FONT = path.join(
+  process.cwd(),
+  "assets",
+  "fonts",
+  "NotoSans-Regular.ttf"
+);
+const BOLD_FONT = path.join(
+  process.cwd(),
+  "assets",
+  "fonts",
+  "NotoSans-Bold.ttf"
+);
+
 // Helper: draw horizontal line
 const drawLine = (doc, y) => {
-  doc
-    .strokeColor("#cccccc")
-    .lineWidth(1)
-    .moveTo(50, y)
-    .lineTo(550, y)
-    .stroke();
+  doc.strokeColor("#000000").lineWidth(1).moveTo(50, y).lineTo(550, y).stroke();
 };
 
 // Helper: table header
 const createTableHeader = (doc, y) => {
-  doc.rect(50, y, 500, 25).fillAndStroke("#4a5568", "#4a5568");
-
   doc
-    .fillColor("#ffffff")
-    .fontSize(10)
-    .font("Helvetica-Bold")
-    .text("Description", 60, y + 8, { width: 200 })
-    .text("Quantity", 270, y + 8, { width: 80, align: "center" })
-    .text("Rate", 360, y + 8, { width: 80, align: "right" })
-    .text("Amount", 450, y + 8, { width: 90, align: "right" });
+    .font("Bold")
+    .fontSize(11)
+    .fillColor("#000")
+    .text("Description", 50, y)
+    .text("Quantity", 250, y)
+    .text("Unit Price", 350, y)
+    .text("Total", 480, y);
+
+  drawLine(doc, y + 18);
 };
 
+// ============= ORDER INVOICE (Receipt Format) =================
 export const generateOrderInvoice = (order) => {
   return new Promise((resolve, reject) => {
     const exportDir = path.join(process.cwd(), "exports");
@@ -46,188 +56,322 @@ export const generateOrderInvoice = (order) => {
 
     const filePath = path.join(exportDir, `invoice_${order._id}.pdf`);
     const stream = fs.createWriteStream(filePath);
-
     const doc = new PDFDocument({ margin: 50, size: "A4" });
+
     doc.pipe(stream);
 
-    let yPosition = 50;
-
-    // ===== HEADER WITH LOGO =====
-    if (fs.existsSync(COMPANY_INFO.logoPath)) {
-      doc.image(COMPANY_INFO.logoPath, 50, yPosition, { width: 80 });
+    // Register local fonts (fallback to Helvetica if missing)
+    if (fs.existsSync(REGULAR_FONT) && fs.existsSync(BOLD_FONT)) {
+      doc.registerFont("Regular", REGULAR_FONT);
+      doc.registerFont("Bold", BOLD_FONT);
+      doc.font("Regular");
+    } else {
+      console.warn("Custom fonts not found, using default Helvetica.");
+      doc.font("Helvetica");
     }
 
-    doc
-      .fontSize(18)
-      .font("Helvetica-Bold")
-      .fillColor("#2d3748")
-      .text(COMPANY_INFO.name, 300, yPosition, { align: "right" });
+    let y = 50;
 
-    doc
-      .fontSize(9)
-      .font("Helvetica")
-      .fillColor("#4a5568")
-      .text(COMPANY_INFO.address, 300, yPosition + 25, { align: "right" })
-      .text(COMPANY_INFO.city, 300, yPosition + 38, { align: "right" })
-      .text(`Phone: ${COMPANY_INFO.phone}`, 300, yPosition + 51, { align: "right" })
-      .text(`Email: ${COMPANY_INFO.email}`, 300, yPosition + 64, { align: "right" })
-      .text(`GST: ${COMPANY_INFO.gst}`, 300, yPosition + 77, { align: "right" });
+    // Logo (Top Left)
+    if (fs.existsSync(COMPANY_INFO.logoPath)) {
+      doc.image(COMPANY_INFO.logoPath, 50, y, { width: 60 });
+    }
 
-    yPosition += 110;
-
-    // ===== INVOICE TITLE =====
+    // Title "Receipt" (Top Right)
     doc
+      .font("Bold")
       .fontSize(24)
-      .font("Helvetica-Bold")
-      .fillColor("#2d3748")
-      .text("INVOICE", 50, yPosition);
+      .fillColor("#000")
+      .text("Receipt", 350, y, { align: "right" });
 
-    yPosition += 40;
+    y += 70;
 
-    // ===== INVOICE INFO & CLIENT INFO =====
+    // Company Info (Left side)
+    doc.font("Bold").fontSize(14).fillColor("#000").text(COMPANY_INFO.name, 50, y);
+    y += 20;
+
+    doc.font("Regular").fontSize(10);
+    doc.text(COMPANY_INFO.address, 50, y);
+    y += 15;
+
+    doc.text(COMPANY_INFO.city, 50, y);
+    y += 20;
+
+    doc.text(`Phone : ${COMPANY_INFO.phone}`, 50, y);
+    y += 15;
+
+    doc.text(`Email  : ${COMPANY_INFO.email}`, 50, y);
+
+    // Reset y position for right side info
+    y = 120;
+
+    // Invoice Info (Right side)
+    doc.font("Bold").fontSize(10).fillColor("#000").text("Date", 350, y);
     doc
-      .fontSize(10)
-      .font("Helvetica-Bold")
-      .fillColor("#2d3748")
-      .text("Invoice Details:", 50, yPosition);
+      .font("Regular")
+      .text(`: ${moment(order.createdAt).format("DD MMMM YYYY")}`, 430, y);
 
+    y += 15;
+    doc.font("Bold").text("Invoice Number", 350, y);
     doc
+      .font("Regular")
+      .text(`: ${order._id.toString().slice(-4).toUpperCase()}`, 450, y);
+
+    y += 15;
+    doc.font("Bold").text("Customer Name", 350, y);
+    doc.font("Regular").text(`: ${order.ClientName}`, 450, y);
+
+    y += 15;
+    doc.font("Bold").text("Customer Address", 350, y);
+    doc.font("Regular").text(`: ${order.ClientAddress || "Ch Sambhaji Nagar"}`, 450, y);
+
+    y += 50;
+
+    // Line above table
+    drawLine(doc, y);
+    y += 10;
+
+    // Table Header
+    createTableHeader(doc, y);
+    y += 30;
+
+    // Item Row
+    doc.font("Regular").fontSize(10).fillColor("#000");
+    doc.text(order.ServiceTitle, 50, y, { width: 180 });
+    doc.text("1", 260, y);
+
+    // Unit Price and Total aligned with header, with ₹ sign
+    doc.text(`₹${order.Amount}`, 350, y);
+    doc.text(`₹${order.Amount}`, 480, y);
+
+    y += 40;
+
+    // Description
+    if (order.ServiceDescription) {
+      doc.fontSize(9).fillColor("#444").text(order.ServiceDescription, 50, y, { width: 200 });
+      y += 30;
+    }
+
+    // Watermark
+    doc
+      .font("Bold")
+      .fontSize(90)
+      .fillColor("#cce3d8")
+      .opacity(0.22)
+      .text("digitos", 100, y, { align: "center" });
+
+    doc.opacity(1);
+    y += 100;
+
+    // Totals
+    doc.font("Regular").fontSize(11).fillColor("#000").text("Subtotal :", 400, y);
+    doc.text(`₹${order.Amount}`, 480, y);
+
+    y += 20;
+
+    doc.font("Bold").text("Total Amount Due :", 350, y);
+    doc.font("Regular").text(`₹${order.Amount}`, 480, y);
+
+    // Divider line
+    y += 40;
+    drawLine(doc, y);
+
+    y += 20;
+
+    // Footer Payment Terms
+    doc.font("Bold").fontSize(10).text("Delivery Time :", 50, y);
+    doc.font("Regular").text("35 Days for version 1", 150, y);
+
+    y += 15;
+
+    doc.font("Bold").text("Payment Terms :", 50, y);
+    doc
+      .font("Regular")
+      .text("40k Advance 50k Version 1 and 50k During version 1", 150, y);
+
+    y += 15;
+
+    doc.font("Bold").text("Payment Methods :", 50, y);
+    doc
+      .font("Regular")
+      .text("Check, Credit Card, or Bank Transfer", 150, y);
+
+    y += 30;
+
+    doc.font("Bold").text("Thank you for your business!", 50, y);
+
+    // Bottom Footer
+    doc
+      .font("Regular")
       .fontSize(9)
-      .font("Helvetica")
-      .fillColor("#4a5568")
-      .text(`Invoice No: #${order._id.toString().slice(-8).toUpperCase()}`, 50, yPosition + 15)
-      .text(`Invoice Date: ${moment(order.createdAt).format("DD MMM YYYY")}`, 50, yPosition + 28)
-      .text(`Status: ${order.PaymentStatus}`, 50, yPosition + 41);
+      .fillColor("#444")
+      .text("Please contact us if you have any questions regarding this invoice.", 50, 750, {
+        width: 500,
+        align: "center",
+      });
 
+    doc.end();
+
+    stream.on("finish", () => resolve(filePath));
+    stream.on("error", reject);
+  });
+};
+
+// ============= FINAL BILL (Same format + Paid Badge) =================
+export const generateFinalBill = (order) => {
+  return new Promise((resolve, reject) => {
+    const exportDir = path.join(process.cwd(), "exports");
+    if (!fs.existsSync(exportDir)) fs.mkdirSync(exportDir);
+
+    const filePath = path.join(exportDir, `final_bill_${order._id}.pdf`);
+    const stream = fs.createWriteStream(filePath);
+    const doc = new PDFDocument({ margin: 50, size: "A4" });
+
+    doc.pipe(stream);
+
+    // Register fonts
+    if (fs.existsSync(REGULAR_FONT) && fs.existsSync(BOLD_FONT)) {
+      doc.registerFont("Regular", REGULAR_FONT);
+      doc.registerFont("Bold", BOLD_FONT);
+      doc.font("Regular");
+    } else {
+      console.warn("Custom fonts not found, using default Helvetica.");
+      doc.font("Helvetica");
+    }
+
+    let y = 50;
+
+    // Logo (Top Left)
+    if (fs.existsSync(COMPANY_INFO.logoPath)) {
+      doc.image(COMPANY_INFO.logoPath, 50, y, { width: 60 });
+    }
+
+    // Title "Final Bill" (Top Right)
     doc
-      .fontSize(10)
-      .font("Helvetica-Bold")
-      .fillColor("#2d3748")
-      .text("Bill To:", 320, yPosition);
+      .font("Bold")
+      .fontSize(24)
+      .fillColor("#000")
+      .text("Final Bill", 350, y, { align: "right" });
 
+    // PAID IN FULL Badge (aligned with title)
+    doc.rect(385, y + 30, 155, 25).fillAndStroke("#10b981", "#10b981");
     doc
-      .fontSize(9)
-      .font("Helvetica")
-      .fillColor("#4a5568")
-      .text(order.ClientName, 320, yPosition + 15)
-      .text(order.ClientEmail || "", 320, yPosition + 28)
-      .text(order.ClientPhone || "", 320, yPosition + 41);
+      .font("Bold")
+      .fontSize(13)
+      .fillColor("#fff")
+      .text("PAID IN FULL", 385, y + 35, { width: 155, align: "center" });
 
-    yPosition += 70;
-    drawLine(doc, yPosition);
-    yPosition += 20;
+    y += 65;
 
-    // ===== TABLE HEADER =====
-    createTableHeader(doc, yPosition);
-    yPosition += 30;
+    // Company Info (Left side)
+    doc.font("Bold").fontSize(14).fillColor("#000").text(COMPANY_INFO.name, 50, y);
+    y += 18;
 
-    // ===== SERVICE ROW =====
+    doc.font("Regular").fontSize(10);
+    doc.text(COMPANY_INFO.address, 50, y);
+    y += 14;
+
+    doc.text(COMPANY_INFO.city, 50, y);
+    y += 18;
+
+    doc.text(`Phone : ${COMPANY_INFO.phone}`, 50, y);
+    y += 14;
+
+    doc.text(`Email : ${COMPANY_INFO.email}`, 50, y);
+
+    // Reset y position for right side info
+    y = 115;
+
+    // Bill Info (Right side)
+    doc.font("Bold").fontSize(10).fillColor("#000").text("Bill No", 330, y);
+    doc.font("Regular").text(`: ${order._id.toString().slice(-4).toUpperCase()}`, 450, y);
+
+    y += 15;
+    doc.font("Bold").text("Issued Date", 330, y);
     doc
-      .fontSize(9)
-      .font("Helvetica")
-      .fillColor("#2d3748")
-      .text(order.ServiceTitle, 60, yPosition, { width: 200 })
-      .text("1", 270, yPosition, { width: 80, align: "center" })
-      .text(`₹${order.Amount.toLocaleString()}`, 360, yPosition, { width: 80, align: "right" })
-      .text(`₹${order.Amount.toLocaleString()}`, 450, yPosition, { width: 90, align: "right" });
+      .font("Regular")
+      .text(`: ${moment(order.createdAt).format("DD MMMM YYYY")}`, 450, y);
 
-    yPosition += 15;
+    y += 15;
+    doc.font("Bold").text("Completion Date", 330, y);
+    doc
+      .font("Regular")
+      .text(`: ${moment(order.updatedAt).format("DD MMMM YYYY")}`, 450, y);
+
+    y += 15;
+    doc.font("Bold").text("Client Name", 330, y);
+    doc.font("Regular").text(`: ${order.ClientName}`, 450, y);
+
+    y += 50;
+
+    // Line above table
+    drawLine(doc, y);
+    y += 10;
+
+    // Table Header
+    createTableHeader(doc, y);
+    y += 30;
+
+    // Row
+    doc.font("Regular").fontSize(10).fillColor("#000").text(order.ServiceTitle, 50, y, {
+      width: 180,
+    });
+    doc.text("1", 260, y);
+
+    // Unit Price and Total with ₹
+    doc.text(`₹${order.Amount}`, 350, y);
+    doc.text(`₹${order.Amount}`, 480, y);
+
+    y += 40;
 
     if (order.ServiceDescription) {
-      doc
-        .fontSize(8)
-        .fillColor("#718096")
-        .text(order.ServiceDescription, 60, yPosition, { width: 200 });
-
-      yPosition += 20;
-    } else {
-      yPosition += 5;
+      doc.fontSize(9).fillColor("#444").text(order.ServiceDescription, 50, y, { width: 200 });
+      y += 35;
     }
 
-    if (order.StartDate || order.EndDate) {
-      const dateRange = `${order.StartDate ? moment(order.StartDate).format("DD MMM YYYY") : ""}${
-        order.StartDate && order.EndDate ? " to " : ""
-      }${order.EndDate ? moment(order.EndDate).format("DD MMM YYYY") : ""}`;
-
-      doc
-        .fontSize(8)
-        .fillColor("#718096")
-        .text(`Service Period: ${dateRange}`, 60, yPosition, { width: 200 });
-
-      yPosition += 20;
-    }
-
-    yPosition += 10;
-    drawLine(doc, yPosition);
-    yPosition += 15;
-
-    // ===== FINANCIAL SUMMARY =====
-    const summaryX = 380;
-
+    // Watermark
     doc
+      .font("Bold")
+      .fontSize(90)
+      .opacity(0.2)
+      .fillColor("#cce3d8")
+      .text("digitos", 100, y, { align: "center" });
+
+    doc.opacity(1);
+    y += 100;
+
+    // Payment Summary
+    doc.font("Regular").fontSize(11).fillColor("#000").text("Total Amount :", 400, y);
+    doc.text(`₹${order.Amount}`, 480, y);
+
+    y += 20;
+    doc.text("Advance Paid :", 400, y);
+    doc.text(`₹${order.AdvancePaid}`, 480, y);
+
+    y += 20;
+    doc.font("Bold").text("Balance Cleared :", 370, y);
+    doc.font("Regular").text(`₹${order.Amount - order.AdvancePaid}`, 480, y);
+
+    y += 40;
+    drawLine(doc, y);
+
+    // Completion Message
+    y += 30;
+    doc.font("Bold").fontSize(11).text("Service Completed Successfully ✓", 50, y);
+
+    y += 20;
+    doc
+      .font("Regular")
+      .fontSize(10)
+      .fillColor("#444")
+      .text("This final bill confirms project completion and full payment received.", 50, y);
+
+    // Footer
+    doc
+      .font("Regular")
       .fontSize(9)
-      .font("Helvetica")
-      .fillColor("#4a5568")
-      .text("Subtotal:", summaryX, yPosition)
-      .text(`₹${order.Amount.toLocaleString()}`, summaryX + 100, yPosition, { align: "right" });
-
-    yPosition += 15;
-
-    doc
-      .text("Advance Paid:", summaryX, yPosition)
-      .text(`₹${order.AdvancePaid.toLocaleString()}`, summaryX + 100, yPosition, { align: "right" });
-
-    yPosition += 20;
-
-    const balanceDue = order.BalanceDue ?? (order.Amount - order.AdvancePaid);
-
-    doc.rect(summaryX - 10, yPosition - 5, 190, 25).fillAndStroke("#4a5568", "#4a5568");
-
-    doc
-      .fontSize(11)
-      .font("Helvetica-Bold")
-      .fillColor("#ffffff")
-      .text("Balance Due:", summaryX, yPosition + 3)
-      .text(`₹${balanceDue.toLocaleString()}`, summaryX + 100, yPosition + 3, { align: "right" });
-
-    yPosition += 50;
-
-    // ===== PAYMENT INSTRUCTIONS =====
-    if (balanceDue > 0) {
-      doc
-        .fontSize(10)
-        .font("Helvetica-Bold")
-        .fillColor("#2d3748")
-        .text("Payment Instructions:", 50, yPosition);
-
-      yPosition += 15;
-
-      doc
-        .fontSize(9)
-        .font("Helvetica")
-        .fillColor("#4a5568")
-        .text("• Please make payment within 15 days of invoice date", 60, yPosition)
-        .text("• Payment can be made via bank transfer, UPI, or cash", 60, yPosition + 12)
-        .text("• Please quote invoice number in payment reference", 60, yPosition + 24);
-
-      yPosition += 50;
-    }
-
-    // ===== FOOTER =====
-    const footerY = 750;
-    drawLine(doc, footerY);
-
-    doc
-      .fontSize(8)
-      .font("Helvetica")
-      .fillColor("#718096")
-      .text(
-        "Terms & Conditions: Payment is due within 15 days. Late payments may incur additional charges.",
-        50,
-        footerY + 10,
-        { width: 500, align: "center" }
-      )
-      .text("Thank you for your business!", 50, footerY + 25, {
+      .fillColor("#444")
+      .text("Thank you for trusting Digitos IT Solutions!", 50, 750, {
         width: 500,
         align: "center",
       });
@@ -240,197 +384,336 @@ export const generateOrderInvoice = (order) => {
 };
 
 
-export const generateFinalBill = (order) => {
-    return new Promise((resolve, reject) => {
-  const exportDir = path.join(process.cwd(), "exports");
-  if (!fs.existsSync(exportDir)) fs.mkdirSync(exportDir);
+// import fs from "fs";
+// import path from "path";
+// import PDFDocument from "pdfkit";
+// import moment from "moment";
 
-  const filePath = path.join(exportDir, `final_bill_${order._id}.pdf`);
-  const doc = new PDFDocument({ margin: 50, size: "A4" });
+// // Company Configuration
+// const COMPANY_INFO = {
+//   name: "Digitos IT Solutions pvt ltd",
+//   address: "Hudco colony",
+//   city: "Chhatrapati Sambhajinagar, Maharashtra 400001",
+//   phone: "+91 98765 43210",
+//   email: "info@digitositsolutions.com",
+//   website: "www.digitositsolutions.com",
+//   gst: "GST123456789",
+//   logoPath: path.join(process.cwd(), "assets", "logo.png"),
+// };
 
-const stream = fs.createWriteStream(filePath);
-doc.pipe(stream);
+// // Local fonts
+// const REGULAR_FONT = path.join(process.cwd(), "assets", "fonts", "NotoSans-Regular.ttf");
+// const BOLD_FONT = path.join(process.cwd(), "assets", "fonts", "NotoSans-Bold.ttf");
 
- stream.on("finish", () => resolve(filePath));
-    stream.on("error", reject);
-  let yPosition = 50;
+// // Draw line
+// const drawLine = (doc, y) => {
+//   doc.strokeColor("#000").lineWidth(1).moveTo(50, y).lineTo(550, y).stroke();
+// };
 
-  // ===== HEADER WITH LOGO =====
-  if (fs.existsSync(COMPANY_INFO.logoPath)) {
-    doc.image(COMPANY_INFO.logoPath, 50, yPosition, { width: 80 });
-  }
+// // Table header
+// const createTableHeader = (doc, y) => {
+//   doc
+//     .font("Bold")
+//     .fontSize(11)
+//     .fillColor("#000")
+//     .text("Description", 50, y)
+//     .text("Quantity", 250, y)
+//     .text("Unit Price", 350, y)
+//     .text("Total", 480, y);
 
-  // Company Details
-  doc
-    .fontSize(18)
-    .font("Helvetica-Bold")
-    .fillColor("#2d3748")
-    .text(COMPANY_INFO.name, 300, yPosition, { align: "right" });
-  
-  doc
-    .fontSize(9)
-    .font("Helvetica")
-    .fillColor("#4a5568")
-    .text(COMPANY_INFO.address, 300, yPosition + 25, { align: "right" })
-    .text(COMPANY_INFO.city, 300, yPosition + 38, { align: "right" })
-    .text(`Phone: ${COMPANY_INFO.phone}`, 300, yPosition + 51, { align: "right" })
-    .text(`Email: ${COMPANY_INFO.email}`, 300, yPosition + 64, { align: "right" })
-    .text(`GST: ${COMPANY_INFO.gst}`, 300, yPosition + 77, { align: "right" });
+//   drawLine(doc, y + 18);
+// };
 
-  yPosition += 110;
+// /* ============================================================
+//    ================== GENERATE ORDER INVOICE ===================
+//    ============================================================ */
 
-  // ===== FINAL BILL TITLE WITH BADGE =====
-  doc
-    .fontSize(24)
-    .font("Helvetica-Bold")
-    .fillColor("#2d3748")
-    .text("FINAL BILL", 50, yPosition);
+// export const generateOrderInvoice = (order) => {
+//   return new Promise((resolve, reject) => {
+//     const exportDir = path.join(process.cwd(), "exports");
+//     if (!fs.existsSync(exportDir)) fs.mkdirSync(exportDir);
 
-  // Paid stamp
-  doc
-    .rect(420, yPosition - 5, 130, 35)
-    .fillAndStroke("#10b981", "#10b981");
-  
-  doc
-    .fontSize(16)
-    .font("Helvetica-Bold")
-    .fillColor("#ffffff")
-    .text("PAID IN FULL", 430, yPosition + 5);
+//     const filePath = path.join(exportDir, `invoice_${order._id}.pdf`);
+//     const stream = fs.createWriteStream(filePath);
 
-  yPosition += 50;
+//     const doc = new PDFDocument({ margin: 50, size: "A4" });
+//     doc.pipe(stream);
 
-  // ===== BILL INFO & CLIENT INFO =====
-  doc
-    .fontSize(10)
-    .font("Helvetica-Bold")
-    .fillColor("#2d3748")
-    .text("Bill Details:", 50, yPosition);
+//     // Load fonts
+//     if (fs.existsSync(REGULAR_FONT) && fs.existsSync(BOLD_FONT)) {
+//       doc.registerFont("Regular", REGULAR_FONT);
+//       doc.registerFont("Bold", BOLD_FONT);
+//       doc.font("Regular");
+//     } else {
+//       doc.font("Helvetica");
+//     }
 
-  doc
-    .font("Helvetica")
-    .fontSize(9)
-    .fillColor("#4a5568")
-    .text(`Bill No: #${order._id.toString().slice(-8).toUpperCase()}`, 50, yPosition + 15)
-    .text(`Issue Date: ${moment(order.createdAt).format("DD MMM YYYY")}`, 50, yPosition + 28)
-    .text(`Completion Date: ${moment(order.updatedAt).format("DD MMM YYYY")}`, 50, yPosition + 41);
+//     let y = 50;
 
-  doc
-    .fontSize(10)
-    .font("Helvetica-Bold")
-    .fillColor("#2d3748")
-    .text("Client:", 320, yPosition);
+//     // Logo
+//     if (fs.existsSync(COMPANY_INFO.logoPath)) {
+//       doc.image(COMPANY_INFO.logoPath, 50, y, { width: 60 });
+//     }
 
-  doc
-    .font("Helvetica")
-    .fontSize(9)
-    .fillColor("#4a5568")
-    .text(order.ClientName, 320, yPosition + 15)
-    .text(order.ClientEmail || "", 320, yPosition + 28)
-    .text(order.ClientPhone || "", 320, yPosition + 41);
+//     // Title
+//     doc.font("Bold").fontSize(24).fillColor("#000").text("Receipt", 350, y, { align: "right" });
 
-  yPosition += 70;
-  drawLine(doc, yPosition);
-  yPosition += 20;
+//     y += 70;
 
-  // ===== SERVICE DETAILS =====
-  createTableHeader(doc, yPosition);
-  yPosition += 30;
+//     // Company info left
+//     doc.font("Bold").fontSize(14).fillColor("#000").text(COMPANY_INFO.name, 50, y);
+//     y += 20;
 
-  doc
-    .fontSize(9)
-    .font("Helvetica")
-    .fillColor("#2d3748")
-    .text(order.ServiceTitle, 60, yPosition, { width: 200 })
-    .text("1", 270, yPosition, { width: 80, align: "center" })
-    .text(`₹${order.Amount.toLocaleString()}`, 360, yPosition, { width: 80, align: "right" })
-    .text(`₹${order.Amount.toLocaleString()}`, 450, yPosition, { width: 90, align: "right" });
+//     doc.font("Regular").fontSize(10);
+//     doc.text(COMPANY_INFO.address, 50, y);
+//     y += 15;
 
-  yPosition += 15;
+//     doc.text(COMPANY_INFO.city, 50, y);
+//     y += 20;
 
-  if (order.ServiceDescription) {
-    doc
-      .fontSize(8)
-      .fillColor("#718096")
-      .text(order.ServiceDescription, 60, yPosition, { width: 200 });
-    yPosition += 25;
-  }
+//     doc.text(`Phone : ${COMPANY_INFO.phone}`, 50, y);
+//     y += 15;
 
-  yPosition += 10;
-  drawLine(doc, yPosition);
-  yPosition += 15;
+//     doc.text(`Email : ${COMPANY_INFO.email}`, 50, y);
 
-  // ===== PAYMENT SUMMARY =====
-  const summaryX = 380;
-  
-  doc
-    .fontSize(9)
-    .font("Helvetica")
-    .fillColor("#4a5568")
-    .text("Total Amount:", summaryX, yPosition, { width: 100, align: "left" })
-    .text(`₹${order.Amount.toLocaleString()}`, summaryX + 100, yPosition, { width: 80, align: "right" });
+//     // Right info
+//     y = 120;
 
-  yPosition += 15;
+//     doc.font("Bold").fontSize(10).text("Date", 350, y);
+//     doc.font("Regular").text(`: ${moment(order.createdAt).format("DD MMMM YYYY")}`, 430, y);
 
-  doc
-    .text("Advance Paid:", summaryX, yPosition, { width: 100, align: "left" })
-    .text(`₹${order.AdvancePaid.toLocaleString()}`, summaryX + 100, yPosition, { width: 80, align: "right" });
+//     y += 15;
+//     doc.font("Bold").text("Invoice Number", 350, y);
+//     doc.font("Regular").text(`: ${order._id.toString().slice(-4).toUpperCase()}`, 450, y);
 
-  yPosition += 15;
+//     y += 15;
+//     doc.font("Bold").text("Customer Name", 350, y);
+//     doc.font("Regular").text(`: ${order.ClientName}`, 450, y);
 
-  const balanceCleared = order.BalanceDue ?? (order.Amount - order.AdvancePaid);
-  
-  doc
-    .text("Balance Cleared:", summaryX, yPosition, { width: 100, align: "left" })
-    .text(`₹${balanceCleared.toLocaleString()}`, summaryX + 100, yPosition, { width: 80, align: "right" });
+//     y += 15;
+//     doc.font("Bold").text("Customer Address", 350, y);
+//     doc.font("Regular").text(`: ${order.ClientAddress || "Ch Sambhaji Nagar"}`, 450, y);
 
-  yPosition += 20;
+//     y += 15;
+//     doc.font("Bold").text("GSTIN", 350, y);
+//     doc.font("Regular").text(`: ${COMPANY_INFO.gst}`, 450, y);
 
-  doc
-    .rect(summaryX - 10, yPosition - 5, 190, 25)
-    .fillAndStroke("#10b981", "#10b981");
+//     y += 50;
 
-  doc
-    .fontSize(11)
-    .font("Helvetica-Bold")
-    .fillColor("#ffffff")
-    .text("Total Paid:", summaryX, yPosition + 3, { width: 100, align: "left" })
-    .text(`₹${order.Amount.toLocaleString()}`, summaryX + 100, yPosition + 3, { width: 80, align: "right" });
+//     drawLine(doc, y);
+//     y += 10;
 
-  yPosition += 50;
+//     createTableHeader(doc, y);
+//     y += 30;
 
-  // ===== COMPLETION MESSAGE =====
-  doc
-    .rect(50, yPosition, 500, 60)
-    .fillAndStroke("#f0fdf4", "#10b981");
+//     doc.font("Regular").fontSize(10).fillColor("#000").text(order.ServiceTitle, 50, y, { width: 180 });
+//     doc.text("1", 260, y);
+//     doc.text(`₹${order.Amount}`, 350, y);
+//     doc.text(`₹${order.Amount}`, 480, y);
 
-  doc
-    .fontSize(11)
-    .font("Helvetica-Bold")
-    .fillColor("#10b981")
-    .text("✓ Service Completed Successfully", 70, yPosition + 15)
-    .fontSize(9)
-    .font("Helvetica")
-    .fillColor("#4a5568")
-    .text("This bill marks the successful completion of the service.", 70, yPosition + 35);
+//     y += 40;
 
-  // ===== FOOTER =====
-  const footerY = 750;
-  drawLine(doc, footerY);
+//     if (order.ServiceDescription) {
+//       doc.fontSize(9).text(order.ServiceDescription, 50, y, { width: 200 });
+//       y += 30;
+//     }
 
-  doc
-    .fontSize(8)
-    .font("Helvetica")
-    .fillColor("#718096")
-    .text("This is a computer generated final bill and requires no signature.", 50, footerY + 10, {
-      width: 500,
-      align: "center",
-    })
-    .text("Thank you for your trust and business!", 50, footerY + 25, {
-      width: 500,
-      align: "center",
-    });
+//     // Watermark
+//     doc
+//       .font("Bold")
+//       .fontSize(90)
+//       .fillColor("#cce3d8")
+//       .opacity(0.18)
+//       .text("digitos", 100, y, { align: "center" });
 
-  doc.end();
-  return filePath;
-    });
-};
+//     // RESET OPACITY + COLOR
+//     doc.opacity(1).fillColor("#000");
+
+//     y += 120;
+
+//     // Totals
+//     doc.font("Bold").fontSize(11).text("Total Amount :", 350, y);
+//     doc.font("Regular").text(`₹${order.Amount}`, 480, y);
+
+//     y += 20;
+//     doc.font("Bold").text("Advance Paid :", 350, y);
+//     doc.font("Regular").text(`₹${order.AdvancePaid}`, 480, y);
+
+//     y += 40;
+//     drawLine(doc, y);
+
+//     y += 20;
+
+//     doc.font("Bold").text("Delivery Time :", 50, y);
+//     doc.font("Regular").text("35 Days for version 1", 150, y);
+
+//     y += 15;
+//     doc.font("Bold").text("Payment Terms :", 50, y);
+//     doc.font("Regular").text("40k Advance 50k Version 1 and 50k During version 2", 150, y);
+
+//     y += 15;
+//     doc.font("Bold").text("Payment Methods :", 50, y);
+//     doc.font("Regular").text("Check, Credit Card, or Bank Transfer", 150, y);
+
+//     y += 30;
+//     doc.font("Bold").text("Thank you for your business!", 50, y);
+
+//     doc.font("Regular")
+//       .fontSize(9)
+//       .text("Please contact us if you have any questions regarding this invoice.", 50, 750, {
+//         width: 500,
+//         align: "center",
+//       });
+
+//     doc.end();
+
+//     stream.on("finish", () => resolve(filePath));
+//     stream.on("error", reject);
+//   });
+// };
+
+// /* ============================================================
+//    ======================= FINAL BILL ==========================
+//    ============================================================ */
+
+// export const generateFinalBill = (order) => {
+//   return new Promise((resolve, reject) => {
+//     const exportDir = path.join(process.cwd(), "exports");
+//     if (!fs.existsSync(exportDir)) fs.mkdirSync(exportDir);
+
+//     const filePath = path.join(exportDir, `final_bill_${order._id}.pdf`);
+//     const stream = fs.createWriteStream(filePath);
+
+//     const doc = new PDFDocument({ margin: 50, size: "A4" });
+//     doc.pipe(stream);
+
+//     // Fonts
+//     if (fs.existsSync(REGULAR_FONT) && fs.existsSync(BOLD_FONT)) {
+//       doc.registerFont("Regular", REGULAR_FONT);
+//       doc.registerFont("Bold", BOLD_FONT);
+//       doc.font("Regular");
+//     } else {
+//       doc.font("Helvetica");
+//     }
+
+//     let y = 50;
+
+//     // Logo
+//     if (fs.existsSync(COMPANY_INFO.logoPath)) {
+//       doc.image(COMPANY_INFO.logoPath, 50, y, { width: 60 });
+//     }
+
+//     doc.font("Bold").fontSize(24).text("Final Bill", 350, y, { align: "right" });
+
+//     doc.rect(385, y + 30, 155, 25).fillAndStroke("#10b981", "#10b981");
+//     doc
+//       .font("Bold")
+//       .fontSize(13)
+//       .fillColor("#fff")
+//       .text("PAID IN FULL", 385, y + 35, { width: 155, align: "center" });
+
+//     y += 70;
+
+//     // Left company info
+//     doc.font("Bold").fontSize(14).fillColor("#000").text(COMPANY_INFO.name, 50, y);
+//     y += 18;
+
+//     doc.font("Regular").fontSize(10);
+//     doc.text(COMPANY_INFO.address, 50, y);
+//     y += 14;
+
+//     doc.text(COMPANY_INFO.city, 50, y);
+//     y += 14;
+
+//     doc.text(`Phone: ${COMPANY_INFO.phone}`, 50, y);
+//     y += 14;
+
+//     doc.text(`Email: ${COMPANY_INFO.email}`, 50, y);
+
+//     // Right side
+//     y = 115;
+
+//     doc.font("Bold").fontSize(10).text("Bill No", 330, y);
+//     doc.font("Regular").text(`: ${order._id.toString().slice(-4).toUpperCase()}`, 450, y);
+
+//     y += 15;
+//     doc.font("Bold").text("Issued Date", 330, y);
+//     doc.font("Regular").text(`: ${moment(order.createdAt).format("DD MMMM YYYY")}`, 450, y);
+
+//     y += 15;
+//     doc.font("Bold").text("Completion Date", 330, y);
+//     doc.font("Regular").text(`: ${moment(order.updatedAt).format("DD MMMM YYYY")}`, 450, y);
+
+//     y += 15;
+//     doc.font("Bold").text("Client Name", 330, y);
+//     doc.font("Regular").text(`: ${order.ClientName}`, 450, y);
+
+//     y += 15;
+//     doc.font("Bold").text("GSTIN", 330, y);
+//     doc.font("Regular").text(`: ${COMPANY_INFO.gst}`, 450, y);
+
+//     y += 50;
+
+//     drawLine(doc, y);
+//     y += 10;
+
+//     createTableHeader(doc, y);
+//     y += 30;
+
+//     doc.font("Regular").fillColor("#000").text(order.ServiceTitle, 50, y, { width: 180 });
+//     doc.text("1", 260, y);
+//     doc.text(`₹${order.Amount}`, 350, y);
+//     doc.text(`₹${order.Amount}`, 480, y);
+
+//     y += 40;
+
+//     if (order.ServiceDescription) {
+//       doc.fontSize(9).text(order.ServiceDescription, 50, y, { width: 200 });
+//       y += 35;
+//     }
+
+//     // Watermark
+//     doc
+//       .font("Bold")
+//       .fontSize(90)
+//       .fillColor("#cce3d8")
+//       .opacity(0.18)
+//       .text("digitos", 100, y, { align: "center" });
+
+//     // RESET OPACITY + COLOR
+//     doc.opacity(1).fillColor("#000");
+
+//     y += 120;
+
+//     // Payment Summary
+//     doc.font("Bold").fontSize(11).text("Total Amount :", 350, y);
+//     doc.font("Regular").text(`₹${order.Amount}`, 480, y);
+
+//     y += 20;
+//     doc.font("Bold").text("Advance Paid :", 350, y);
+//     doc.font("Regular").text(`₹${order.AdvancePaid}`, 480, y);
+
+//     y += 20;
+//     doc.font("Bold").text("Balance Cleared :", 350, y);
+//     doc.font("Regular").text(`₹${order.Amount - order.AdvancePaid}`, 480, y);
+
+//     y += 40;
+//     drawLine(doc, y);
+
+//     y += 30;
+//     doc.font("Bold").text("Service Completed Successfully ✓", 50, y);
+
+//     y += 20;
+//     doc.font("Regular")
+//       .fontSize(10)
+//       .text("This final bill confirms project completion and full payment received.", 50, y);
+
+//     doc.font("Regular")
+//       .fontSize(9)
+//       .text("Thank you for trusting Digitos IT Solutions!", 50, 750, { width: 500, align: "center" });
+
+//     doc.end();
+//     stream.on("finish", () => resolve(filePath));
+//     stream.on("error", reject);
+//   });
+// };

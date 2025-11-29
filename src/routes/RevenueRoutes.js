@@ -9,6 +9,7 @@ import {
   updateRevenue,
   getMonthlyRevenue,
   getMonthRevenue,
+  getRevenueByOrderName
 } from "../controller/RevenueController.js";
 
 import { authorizeRoles, verifyToken } from "../Middleware/authMiddleware.js";
@@ -19,8 +20,8 @@ const RevenueRoutes = express.Router();
 // Admin can add revenue manually (CA should not)
 RevenueRoutes.post(
   "/addrevenue",
-  // verifyToken,
-  // authorizeRoles("Admin"),
+  verifyToken,
+  authorizeRoles("Admin"),
   addRevenue
 );
 
@@ -81,6 +82,13 @@ RevenueRoutes.get(
   // verifyToken,
   // authorizeRoles("Admin", "CA"),
   getMonthRevenue
+);
+
+RevenueRoutes.get(
+  "/getrevenuebyordername",
+  // verifyToken,
+  // authorizeRoles("Admin", "CA"),
+  getRevenueByOrderName
 );
 
 export { RevenueRoutes };

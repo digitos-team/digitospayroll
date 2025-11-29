@@ -53,4 +53,4 @@ CompanySchema.pre("save", async function (next) {
   this.AdminPassword = await bcrypt.hash(this.AdminPassword, 10);
   next();
 });
-export const Company = mongoose.model("Company", CompanySchema);
+export const Company = mongoose.models.Company || mongoose.model("Company", CompanySchema);

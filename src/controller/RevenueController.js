@@ -1,4 +1,5 @@
 import { Revenue } from "../models/RevenueSchema.js";
+import { Order } from "../models/OrderSchema.js";
 import mongoose from "mongoose";
 const addRevenue = async (req, res) => {
   try {
@@ -286,6 +287,53 @@ const getMonthRevenue = async (req, res) => {
   }
 };
 
+/*--------------------Get Revenue By Order Name----------------------- */
+
+const getRevenueByOrderName = async (req, res) => {
+  try {
+    const { name } = req.query;
+
+    if (!name || name.trim() === "") {
+      return res.status(400).json({ message: "Order name is required" });
+    }
+
+    // Case-insensitive search regex
+    const regex = new RegExp(name, "i");
+
+    // 🔍 Find orders where name matches ServiceTitle OR ClientName
+    const orders = await Order.find({
+      $or: [
+        { ServiceTitle: regex },
+        { ClientName: regex }
+      ] 
+    });
+
+    if (orders.length === 0) {
+      return res.status(404).json({ message: "No orders found with this name" });
+    }
+
+    // Extract order IDs
+    const orderIds = orders.map((order) => order._id);
+
+    // Find revenue linked to any of these order IDs
+    const revenues = await Revenue.find({ OrderId: { $in: orderIds } })
+      .populate("OrderId", "ServiceTitle ClientName OrderNumber Amount");
+
+    return res.status(200).json({
+      count: revenues.length,
+      revenues,
+    });
+
+  } catch (error) {
+    console.error("Error in getRevenueByOrderName:", error);
+    res.status(500).json({
+      message: "Server error",
+      error: error.message,
+    });
+  }
+};
+
+
 export {
   addRevenue,
   getAllRevenue,
@@ -296,4 +344,5 @@ export {
   getTotalRevenue,
   getMonthlyRevenue,
   getMonthRevenue,
+  getRevenueByOrderName
 };
